@@ -191,6 +191,38 @@ for(i in c(2:nrow(dataproviderdfspatial))){
 }
 
 
+out2 <- out |> 
+  dplyr::group_by(Resp_id) |>
+  dplyr::group_map(
+    function(tbl, key){
+      # tbl may have one or more geometries
+      # key is empty since we kept the grouping variable
+      
+      # check that the individual geometries are valid
+      # if not try to make them so
+      valid <- if (!any(sf::st_is_valid(tbl))) {
+        try(sf::st_make_valid(tbl))
+      } else {
+        tbl
+      }
+      
+      # make_valid might have failed, 
+      if (inherits(valid, "try_error") || (!all(sf::st_is_valid(tbl))) ){
+        return(NULL)
+      }
+      # combine into one and bind with join with just the first row
+      # since all but geometry column is replicated
+      dplyr::bind_cols(
+        dplyr::slice(tbl,1) |> sf::st_drop_geometry(),
+        sf::st_union(valid) |>
+          sf::st_as_sf(sf_column_name = "x") |>
+          sf::st_set_geometry("geometry"))
+    }, .keep = TRUE) |>
+  dplyr::bind_rows() |>
+  sf::st_as_sf(sf_column_name = "geometry") |>
+  sf::write_sf(dsn = here::here("final-out.geojson"), delete_dsn = TRUE)
+
+
 #save out as a spatial object if needed
 #write_sf(df, "name.shp") 
 ##check spatial scope of programs
@@ -206,7 +238,7 @@ finalsptim$areakm2 <- finalsptim$aream2/1000000
 finalsptim$length_m2 <- sqrt(finalsptim$aream2)
 #m2 to km2
 finalsptim$length_km2 <- finalsptim$length_m2 / 1000
-View(finalsptim)
+#View(finalsptim)
 dim(finalsptim)
 summary(finalsptim$areakm2)
 sum(finalsptim$areakm2)
